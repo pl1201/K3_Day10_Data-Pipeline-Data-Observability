@@ -1,0 +1,11 @@
+{
+  "report_name": "baseline",
+  "success": true,
+  "total_rows": 24,
+  "duplicate_count": 0,
+  "missing_paper_ids": 0,
+  "missing_titles": 0,
+  "short_summaries": 0,
+  "stale_rows": 0,
+  "freshness_threshold_days": 180
+}
