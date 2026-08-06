@@ -1,0 +1,11 @@
+{
+  "report_name": "corrupted",
+  "success": false,
+  "total_rows": 22,
+  "duplicate_count": 1,
+  "missing_paper_ids": 0,
+  "missing_titles": 0,
+  "short_summaries": 1,
+  "stale_rows": 1,
+  "freshness_threshold_days": 180
+}
