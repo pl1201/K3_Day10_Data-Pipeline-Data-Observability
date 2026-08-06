@@ -100,11 +100,14 @@ def run_data_quality_checks(
     checks["missing_fields"] = missing_map
 
     # --- 7. duplicate rows ---
-    full_dup = int(df.duplicated().sum())
+    # Convert list columns or exclude them to avoid unhashable type error
+    hashable_cols = [col for col in df.columns if not isinstance(df[col].iloc[0], list)] if total_rows > 0 else df.columns
+    full_dup = int(df.duplicated(subset=hashable_cols).sum()) if total_rows > 0 else 0
     checks["duplicate_rows"] = {
         "count": full_dup,
         "passed": full_dup == 0,
     }
+
 
     # --- 8. freshness ---
     if "age_days" in df.columns:

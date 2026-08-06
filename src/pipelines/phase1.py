@@ -33,19 +33,19 @@ def main() -> None:
         records = fetch_source_records(settings)
     else:
         records = load_raw_records(settings.paths.raw_records_json)
-    print(f"       → {len(records)} raw records")
+    print(f"       -> {len(records)} raw records")
 
     # ── Bước 3 & 4: Clean data và lưu CSV/JSON ──────────────────────────────
     print("[3/10] Cleaning data...")
     run_date = datetime.now(UTC)
     df = build_clean_dataframe(records, run_date=run_date)
-    print(f"       → {len(df)} clean records (dropped {len(records) - len(df)})")
+    print(f"       -> {len(df)} clean records (dropped {len(records) - len(df)})")
 
     print("[4/10] Saving clean artifacts...")
     settings.paths.clean_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(settings.paths.clean_csv, index=False)
     write_json(settings.paths.clean_json, json.loads(df.to_json(orient="records", force_ascii=False)))
-    print(f"       → {settings.paths.clean_csv}")
+    print(f"       -> {settings.paths.clean_csv}")
 
     # ── Bước 5: Build Chroma index (MiniLM embeddings) ──────────────────────
     # LocalEmbeddingIndex.build() sẽ:
@@ -57,18 +57,18 @@ def main() -> None:
         settings=settings,
         embeddings_output_path=settings.paths.embeddings_json,
     )
-    print(f"       → Collection: {index.collection_name}, docs: {len(index.documents)}")
+    print(f"       -> Collection: {index.collection_name}, docs: {len(index.documents)}")
 
     # ── Bước 6: Tạo hoặc load evaluation test set ───────────────────────────
     print("[6/10] Building / loading test set...")
     settings.paths.eval_testset.parent.mkdir(parents=True, exist_ok=True)
     if settings.refresh_test_set or not settings.paths.eval_testset.exists():
         test_cases = build_test_set(df, output_path=settings.paths.eval_testset)
-        print(f"       → Created {len(test_cases)} test questions")
+        print(f"       -> Created {len(test_cases)} test questions")
     else:
         with open(settings.paths.eval_testset, encoding="utf-8") as f:
             test_cases = json.load(f)
-        print(f"       → Loaded {len(test_cases)} existing test questions")
+        print(f"       -> Loaded {len(test_cases)} existing test questions")
 
     # ── Bước 7: Evaluate (retrieval hit-rate, token F1, judge score) ─────────
     print("[7/10] Evaluating pipeline...")
@@ -81,7 +81,7 @@ def main() -> None:
         answers_output_path=settings.paths.baseline_answers,
     )
     m = bundle.summary
-    print(f"       → retrieval_hit_rate={m['retrieval_hit_rate']:.2f}, "
+    print(f"       -> retrieval_hit_rate={m['retrieval_hit_rate']:.2f}, "
           f"mean_token_f1={m['mean_token_f1']:.2f}, "
           f"judge_accuracy={m['judge_accuracy']:.2f}")
 
@@ -90,7 +90,7 @@ def main() -> None:
     settings.paths.quality_dir.mkdir(parents=True, exist_ok=True)
     quality = run_data_quality_checks(df, settings, report_name="baseline")
     freshness = build_freshness_report(df, settings, settings.paths.freshness_report)
-    print(f"       → is_fresh={freshness.get('is_fresh')}, stale_rows={freshness.get('stale_rows')}")
+    print(f"       -> is_fresh={freshness.get('is_fresh')}, stale_rows={freshness.get('stale_rows')}")
 
     # ── Bước 9: Tạo markdown report tổng kết ────────────────────────────────
     print("[9/10] Generating phase 1 report...")
@@ -110,7 +110,7 @@ def main() -> None:
         quality=quality,
         freshness=freshness,
     )
-    print(f"       → {settings.paths.baseline_report}")
+    print(f"       -> {settings.paths.baseline_report}")
 
     # ── Bước 10 (bonus): Demo agent trên vài câu hỏi mẫu ───────────────────
     print("[10/10] Running agent demo (optional)...")
@@ -132,8 +132,9 @@ def main() -> None:
     except Exception as exc:
         print(f"       [WARN] Agent demo skipped: {exc}")
 
-    print("\n✅ Phase 1 baseline complete!")
+    print("\n[SUCCESS] Phase 1 baseline complete!")
     print(f"   Metrics : {settings.paths.baseline_metrics}")
     print(f"   Answers : {settings.paths.baseline_answers}")
     print(f"   Report  : {settings.paths.baseline_report}")
+
 

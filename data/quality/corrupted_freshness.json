@@ -1,7 +1,12 @@
 {
   "latest_published": "2026-07-03",
   "oldest_published": "2000-01-01",
+  "mean_age_days": 537.3,
+  "median_age_days": 71.5,
+  "max_age_days": 9999,
   "stale_rows": 1,
   "total_rows": 22,
-  "is_fresh": false
+  "freshness_threshold_days": 180,
+  "is_fresh": false,
+  "checked_at": "2026-08-06T04:25:47.869159+00:00"
 }
