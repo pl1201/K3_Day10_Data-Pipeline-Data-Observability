@@ -10,6 +10,19 @@ import pandas as pd
 from core.config import Settings
 
 
+def _duplicate_safe_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a comparable view when object columns contain lists or dicts."""
+    comparable = df.copy()
+    for column in comparable.columns:
+        if comparable[column].map(lambda value: isinstance(value, (list, dict))).any():
+            comparable[column] = comparable[column].map(
+                lambda value: json.dumps(value, sort_keys=True, ensure_ascii=True)
+                if isinstance(value, (list, dict))
+                else value
+            )
+    return comparable
+
+
 # ---------------------------------------------------------------------------
 # Data Quality Checks  (CP0-CP4)
 # ---------------------------------------------------------------------------
@@ -100,9 +113,7 @@ def run_data_quality_checks(
     checks["missing_fields"] = missing_map
 
     # --- 7. duplicate rows ---
-    # Convert list columns or exclude them to avoid unhashable type error
-    hashable_cols = [col for col in df.columns if not isinstance(df[col].iloc[0], list)] if total_rows > 0 else df.columns
-    full_dup = int(df.duplicated(subset=hashable_cols).sum()) if total_rows > 0 else 0
+    full_dup = int(_duplicate_safe_dataframe(df).duplicated().sum())
     checks["duplicate_rows"] = {
         "count": full_dup,
         "passed": full_dup == 0,

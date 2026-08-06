@@ -13,7 +13,6 @@ from ingestion.cleaning import build_clean_dataframe
 from ingestion.crossref import fetch_source_records, load_raw_records
 from observability.quality import build_freshness_report, run_data_quality_checks
 from observability.reporting import generate_phase1_report
-from retrieval.agent import build_agent, run_agent_question
 from retrieval.index import LocalEmbeddingIndex
 
 
@@ -244,6 +243,8 @@ def main() -> None:
     # ── Bước 10 (bonus): Demo agent trên vài câu hỏi mẫu ───────────────────
     print("[10/10] Running agent demo (optional)...")
     try:
+        from retrieval.agent import build_agent, run_agent_question
+
         agent = build_agent(settings=settings, index=index)
         sample_questions = [
             "What is agentic retrieval augmented generation?",
