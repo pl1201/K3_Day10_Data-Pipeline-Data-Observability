@@ -10,6 +10,19 @@ import pandas as pd
 from core.config import Settings
 
 
+def _duplicate_safe_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a comparable view when object columns contain lists or dicts."""
+    comparable = df.copy()
+    for column in comparable.columns:
+        if comparable[column].map(lambda value: isinstance(value, (list, dict))).any():
+            comparable[column] = comparable[column].map(
+                lambda value: json.dumps(value, sort_keys=True, ensure_ascii=True)
+                if isinstance(value, (list, dict))
+                else value
+            )
+    return comparable
+
+
 # ---------------------------------------------------------------------------
 # Data Quality Checks  (CP0-CP4)
 # ---------------------------------------------------------------------------
@@ -100,11 +113,12 @@ def run_data_quality_checks(
     checks["missing_fields"] = missing_map
 
     # --- 7. duplicate rows ---
-    full_dup = int(df.duplicated().sum())
+    full_dup = int(_duplicate_safe_dataframe(df).duplicated().sum())
     checks["duplicate_rows"] = {
         "count": full_dup,
         "passed": full_dup == 0,
     }
+
 
     # --- 8. freshness ---
     if "age_days" in df.columns:

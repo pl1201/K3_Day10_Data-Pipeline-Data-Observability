@@ -7,5 +7,51 @@
   "missing_titles": 0,
   "short_summaries": 1,
   "stale_rows": 1,
-  "freshness_threshold_days": 180
+  "freshness_threshold_days": 180,
+  "checked_at": "2026-08-06T04:25:47.866216+00:00",
+  "checks_detail": {
+    "row_count": {
+      "value": 22,
+      "passed": true
+    },
+    "paper_id_not_null": {
+      "null_count": 0,
+      "passed": true
+    },
+    "paper_id_unique": {
+      "unique_count": 21,
+      "duplicate_count": 1,
+      "passed": false
+    },
+    "title_not_null": {
+      "null_count": 0,
+      "blank_count": 0,
+      "passed": true
+    },
+    "summary_length": {
+      "short_count": 1,
+      "threshold_chars": 20,
+      "passed": false
+    },
+    "missing_fields": {
+      "paper_id": 0,
+      "title": 0,
+      "summary": 0,
+      "published": 0,
+      "authors_joined": 0,
+      "categories_joined": 22,
+      "text_for_embedding": 0
+    },
+    "duplicate_rows": {
+      "count": 1,
+      "passed": false
+    },
+    "freshness": {
+      "stale_rows": 1,
+      "mean_age_days": 537.3,
+      "max_age_days": 9999,
+      "threshold_days": 180,
+      "passed": false
+    }
+  }
 }
