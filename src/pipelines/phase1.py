@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from core.config import load_settings
 from core.utils import write_json
@@ -14,6 +15,127 @@ from observability.quality import build_freshness_report, run_data_quality_check
 from observability.reporting import generate_phase1_report
 from retrieval.agent import build_agent, run_agent_question
 from retrieval.index import LocalEmbeddingIndex
+
+
+REQUIRED_CLEAN_COLUMNS = {
+    "paper_id",
+    "title",
+    "summary",
+    "published",
+    "authors_joined",
+    "categories_joined",
+    "age_days",
+    "text_for_embedding",
+}
+REQUIRED_TEST_CASE_FIELDS = {
+    "id",
+    "question_type",
+    "question",
+    "ground_truth",
+    "ground_truth_doc_ids",
+}
+
+
+class PipelineContractError(RuntimeError):
+    """Raised when a checkpoint artifact violates the integration contract."""
+
+
+def validate_raw_records(records: list[Any]) -> None:
+    if not records:
+        raise PipelineContractError("CP1 raw gate failed: no source records were loaded.")
+    missing_ids = [index for index, record in enumerate(records) if not getattr(record, "paper_id", "")]
+    if missing_ids:
+        raise PipelineContractError(
+            f"CP1 raw gate failed: {len(missing_ids)} records have no paper_id; "
+            f"first indexes={missing_ids[:5]}."
+        )
+
+
+def validate_clean_dataframe(df: Any) -> None:
+    if df is None or df.empty:
+        raise PipelineContractError("CP1 clean gate failed: cleaned dataframe is empty.")
+    missing_columns = sorted(REQUIRED_CLEAN_COLUMNS.difference(df.columns))
+    if missing_columns:
+        raise PipelineContractError(f"CP1 clean gate failed: missing columns {missing_columns}.")
+
+    paper_ids = df["paper_id"].fillna("").astype(str).str.strip()
+    problems = []
+    blank_count = int((paper_ids == "").sum())
+    duplicate_count = int(paper_ids.duplicated().sum())
+    empty_text_count = int(df["text_for_embedding"].fillna("").astype(str).str.strip().eq("").sum())
+    if blank_count:
+        problems.append(f"blank paper_id={blank_count}")
+    if duplicate_count:
+        problems.append(f"duplicate paper_id={duplicate_count}")
+    if empty_text_count:
+        problems.append(f"blank text_for_embedding={empty_text_count}")
+    if problems:
+        raise PipelineContractError(f"CP1 clean gate failed: {', '.join(problems)}.")
+
+
+def validate_test_set(test_set: Any, clean_paper_ids: set[str]) -> None:
+    if not isinstance(test_set, list) or not test_set:
+        raise PipelineContractError("CP2 test-set gate failed: test set is empty or is not a list.")
+
+    seen_ids: set[str] = set()
+    unknown_doc_ids: set[str] = set()
+    for index, item in enumerate(test_set):
+        if not isinstance(item, dict):
+            raise PipelineContractError(f"CP2 test-set gate failed: item {index} is not an object.")
+        missing_fields = sorted(REQUIRED_TEST_CASE_FIELDS.difference(item))
+        if missing_fields:
+            raise PipelineContractError(
+                f"CP2 test-set gate failed: item {index} is missing {missing_fields}."
+            )
+        case_id = str(item["id"]).strip()
+        if not case_id or case_id in seen_ids:
+            detail = "blank" if not case_id else f"duplicate {case_id!r}"
+            raise PipelineContractError(f"CP2 test-set gate failed: {detail} id at item {index}.")
+        seen_ids.add(case_id)
+
+        doc_ids = item["ground_truth_doc_ids"]
+        if not isinstance(doc_ids, list) or not doc_ids:
+            raise PipelineContractError(
+                f"CP2 test-set gate failed: {case_id!r} has no ground_truth_doc_ids."
+            )
+        unknown_doc_ids.update(str(doc_id) for doc_id in doc_ids if str(doc_id) not in clean_paper_ids)
+
+    if unknown_doc_ids:
+        raise PipelineContractError(
+            f"CP2 test-set gate failed: {len(unknown_doc_ids)} document IDs are absent from clean data; "
+            f"first IDs={sorted(unknown_doc_ids)[:5]}."
+        )
+
+
+def validate_embedding_manifest(
+    manifest: Any,
+    expected_collection: str,
+    expected_document_count: int,
+) -> None:
+    if not isinstance(manifest, dict):
+        raise PipelineContractError("CP2 index gate failed: embedding manifest is not an object.")
+    if manifest.get("collection_name") != expected_collection:
+        raise PipelineContractError(
+            f"CP2 index gate failed: expected collection {expected_collection!r}, "
+            f"got {manifest.get('collection_name')!r}."
+        )
+    documents = manifest.get("documents")
+    if not isinstance(documents, list) or len(documents) != expected_document_count:
+        actual_count = len(documents) if isinstance(documents, list) else "invalid"
+        raise PipelineContractError(
+            "CP2 index gate failed: manifest document count does not match clean data "
+            f"(expected={expected_document_count}, actual={actual_count})."
+        )
+
+
+def smoke_test_index(index: Any, df: Any, top_k: int) -> None:
+    sample = df.iloc[0]
+    paper_id = str(sample["paper_id"])
+    if index.lookup(paper_id) is None:
+        raise PipelineContractError(f"CP2 index gate failed: exact lookup missed {paper_id!r}.")
+    results = index.search(str(sample["title"]), top_k=min(top_k, len(df)))
+    if not results:
+        raise PipelineContractError("CP2 index gate failed: semantic search returned no results.")
 
 
 def main() -> None:
@@ -33,12 +155,14 @@ def main() -> None:
         records = fetch_source_records(settings)
     else:
         records = load_raw_records(settings.paths.raw_records_json)
+    validate_raw_records(records)
     print(f"       -> {len(records)} raw records")
 
     # ── Bước 3 & 4: Clean data và lưu CSV/JSON ──────────────────────────────
     print("[3/10] Cleaning data...")
     run_date = datetime.now(UTC)
     df = build_clean_dataframe(records, run_date=run_date)
+    validate_clean_dataframe(df)
     print(f"       -> {len(df)} clean records (dropped {len(records) - len(df)})")
 
     print("[4/10] Saving clean artifacts...")
@@ -57,6 +181,10 @@ def main() -> None:
         settings=settings,
         embeddings_output_path=settings.paths.embeddings_json,
     )
+    with open(settings.paths.embeddings_json, encoding="utf-8") as f:
+        embedding_manifest = json.load(f)
+    validate_embedding_manifest(embedding_manifest, settings.baseline_collection_name, len(df))
+    smoke_test_index(index, df, settings.top_k)
     print(f"       -> Collection: {index.collection_name}, docs: {len(index.documents)}")
 
     # ── Bước 6: Tạo hoặc load evaluation test set ───────────────────────────
@@ -69,6 +197,7 @@ def main() -> None:
         with open(settings.paths.eval_testset, encoding="utf-8") as f:
             test_cases = json.load(f)
         print(f"       -> Loaded {len(test_cases)} existing test questions")
+    validate_test_set(test_cases, set(df["paper_id"].astype(str)))
 
     # ── Bước 7: Evaluate (retrieval hit-rate, token F1, judge score) ─────────
     print("[7/10] Evaluating pipeline...")
